@@ -10,10 +10,8 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v2
 
-    - name: Set up Arduino CLI
-      uses: arduino/setup-arduino-cli@v1
-      with:
-        version: latest
+    - name: Install Arduino CLI
+      uses: arduino/setup-arduino-cli@v2
 
     - name: Install libraries
       run: |
