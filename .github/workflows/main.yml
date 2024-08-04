@@ -24,7 +24,7 @@ jobs:
 
     - name: Compile Sketch
       run: |
-        arduino-cli compile --fqbn arduino:avr:uno apple-pie-firmware.ino
+        arduino-cli compile -e -b arduino:avr:uno apple-pie-firmware.ino
 
     - name: Debuug
       run: |
