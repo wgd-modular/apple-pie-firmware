@@ -13,6 +13,11 @@ jobs:
     - name: Install Arduino CLI
       uses: arduino/setup-arduino-cli@v2
 
+    - name: Install Arduino AVR core
+      run: |
+        arduino-cli core update-index
+        arduino-cli core install arduino:avr
+
     - name: Install libraries
       run: |
         arduino-cli lib install "MCP48xx DAC Library"
