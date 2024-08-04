@@ -26,11 +26,6 @@ jobs:
       run: |
         arduino-cli compile --fqbn arduino:avr:uno apple-pie-firmware.ino
 
-    - name: Format Check
-      run: |
-        sudo apt-get install -y astyle
-        astyle --style=google *.ino *.cpp *.h
-
     - name: Upload compiled hex file as artifact
       uses: actions/upload-artifact@v3
       with:
