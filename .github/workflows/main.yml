@@ -26,6 +26,11 @@ jobs:
       run: |
         arduino-cli compile --fqbn arduino:avr:uno apple-pie-firmware.ino
 
+    - name: Debuug
+      run: |
+        ls -al
+
+        
     - name: Upload compiled hex file as artifact
       uses: actions/upload-artifact@v3
       with:
