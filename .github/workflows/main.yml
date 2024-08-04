@@ -15,7 +15,7 @@ jobs:
 
     - name: Install libraries
       run: |
-        arduino-cli lib install MCP48xx
+        arduino-cli lib install "MCP48xx DAC Library"
 
     - name: Compile Sketch
       run: |
