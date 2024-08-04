@@ -1,0 +1,35 @@
+name: CI
+
+on: [push, pull_request]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v2
+
+    - name: Set up Arduino CLI
+      uses: arduino/setup-arduino-cli@v1
+      with:
+        version: latest
+
+    - name: Install libraries
+      run: |
+        arduino-cli lib install MCP48xx
+
+    - name: Compile Sketch
+      run: |
+        arduino-cli compile --fqbn arduino:avr:uno apple-pie-firmware.ino
+
+    - name: Format Check
+      run: |
+        sudo apt-get install -y astyle
+        astyle --style=google *.ino *.cpp *.h
+
+    - name: Upload compiled hex file as artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: apple-pie-firmware-hex
+        path: build/arduino.avr.uno/apple-pie-firmware.ino.hex
