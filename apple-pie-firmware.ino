@@ -19,6 +19,8 @@ void setup() {
     dac.setGainA(MCP4822::High);
     dac.setGainB(MCP4822::High);
 
+    randomSeed(analogRead(7));
+
     pinMode(GATE_OUT1, OUTPUT);
     pinMode(GATE_OUT2, OUTPUT);
 
