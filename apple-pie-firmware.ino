@@ -5,6 +5,8 @@ const int GATE_OUT1 = 2;
 const int GATE_OUT2 = 3;
 const int CLOCK_IN = 9;
 const int LOCK_PIN = A4;
+const int CV_1 = A0;
+const int CV_2 = A1;
 
 // State Variable for Clock
 volatile bool clockState1 = LOW;
@@ -41,8 +43,11 @@ void loop() {
     // Read the clock input state
     bool currentClockState = digitalRead(CLOCK_IN);
     int lockValue = readAnalogInput(LOCK_PIN);
+    int cvA = readAnalogInput(CV_1) * 1.6;
+    int cvB = readAnalogInput(CV_2) * 1.6;
+    uint16_t lockValueA = (uint16_t)(constrain((int) lockValue + (int) cvA - 500, 0, 1023));
+    uint16_t lockValueB = (uint16_t)(constrain((int) lockValue + (int) cvB - 500, 0, 1023));
     
-
     // Detect rising edge
     if (currentClockState == HIGH && clockState1 == LOW) {
         clockState1 = HIGH;
@@ -50,9 +55,9 @@ void loop() {
         dac.setVoltageB(shiftRegister2 >> 4);
         dac.updateDAC();
         digitalWrite(GATE_OUT1, shiftRegister1 >= 0x8000);
-        shiftRegister1 = (shiftRegister1 << 1) | (lockValue < random(0,2048) ? (shiftRegister1 >> 15) : (~shiftRegister1 >> 15));
+        shiftRegister1 = (shiftRegister1 << 1) | (lockValueA < random(0,2048) ? (shiftRegister1 >> 15) : (~shiftRegister1 >> 15));
         digitalWrite(GATE_OUT2, shiftRegister2 >= 0x8000);
-        shiftRegister2 = (shiftRegister2 << 1) | (lockValue < random(0,2048) ? (shiftRegister2 >> 15) : (~shiftRegister2 >> 15));
+        shiftRegister2 = (shiftRegister2 << 1) | (lockValueB < random(0,2048) ? (shiftRegister2 >> 15) : (~shiftRegister2 >> 15));
     } else if (currentClockState == LOW) {
         // Reset the state when the clock goes low
         clockState1 = LOW;
