@@ -24,7 +24,7 @@ After opening the file with the Arduino IDE, connect your USBasp programmer to y
 
 In the Arduino IDE, select Tools > Board > Arduino Nano and set Processor to ATmega328P. Then, set Port to the appropriate COM port (if applicable), and set Programmer to USBasp.
 
-To flash the Arduino Nano bootloader, go to Tools > Burn Bootloader. This will install the Arduino Nano bootloader onto the ATmega328P chip.
+To flash the Arduino Nano bootloader, go to Tools > Burn Bootloader. This will install the Arduino Nano bootloader onto the ATmega328P chip. **Attention**: Beware that you might need to set a jumper on your USBasp programmer to flash the bootloader (*JP3* on most chinese clones).
 
 Once the bootloader is installed, you can flash the firmware. Go to Sketch > Upload Using Programmer. The Arduino IDE will use the USBasp programmer to flash the apple-pie-firmware.hex file to your module.
 
