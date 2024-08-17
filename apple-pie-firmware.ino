@@ -22,6 +22,11 @@ uint16_t readAnalogInput(uint8_t pin) {
     return analogRead(pin);
 }
 
+// Function to Read Analog Input
+bool readSwitchPosition() {
+    return analogRead(A3) > 512;
+}
+
 MCP4822 dac(10);
 
 void setup() {
@@ -43,21 +48,28 @@ void loop() {
     // Read the clock input state
     bool currentClockState = digitalRead(CLOCK_IN);
     int lockValue = readAnalogInput(LOCK_PIN);
-    int cvA = readAnalogInput(CV_1) * 1.6;
-    int cvB = readAnalogInput(CV_2) * 1.6;
+    int cvA = readAnalogInput(CV_1) * 1.7;
+    int cvB = readAnalogInput(CV_2) * 1.7;
     uint16_t lockValueA = (uint16_t)(constrain((int) lockValue + (int) cvA - 500, 0, 1023));
     uint16_t lockValueB = (uint16_t)(constrain((int) lockValue + (int) cvB - 500, 0, 1023));
     
     // Detect rising edge
     if (currentClockState == HIGH && clockState1 == LOW) {
         clockState1 = HIGH;
+        
         dac.setVoltageA(shiftRegister1 >> 4);
         dac.setVoltageB(shiftRegister2 >> 4);
         dac.updateDAC();
+        
         digitalWrite(GATE_OUT1, shiftRegister1 >= 0x8000);
         shiftRegister1 = (shiftRegister1 << 1) | (lockValueA < random(0,2048) ? (shiftRegister1 >> 15) : (~shiftRegister1 >> 15));
         digitalWrite(GATE_OUT2, shiftRegister2 >= 0x8000);
-        shiftRegister2 = (shiftRegister2 << 1) | (lockValueB < random(0,2048) ? (shiftRegister2 >> 15) : (~shiftRegister2 >> 15));
+        // Invert functionality of lockValue when switch is in reverse position
+        if (readSwitchPosition()) {
+          shiftRegister2 = (shiftRegister2 << 1) | (lockValueB < random(0,2048) ? (shiftRegister2 >> 15) : (~shiftRegister2 >> 15));
+        } else {
+          shiftRegister2 = (shiftRegister2 << 1) | ((1024 - lockValueB) < random(0,2048) ? (shiftRegister2 >> 15) : (~shiftRegister2 >> 15));
+        }
     } else if (currentClockState == LOW) {
         // Reset the state when the clock goes low
         clockState1 = LOW;
