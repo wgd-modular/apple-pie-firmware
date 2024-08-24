@@ -78,8 +78,8 @@ void loop() {
     int lockValue = readAnalogInput(LOCK_PIN);
     int cvA = readAnalogInput(CV_1) * 1.7;
     int cvB = readAnalogInput(CV_2) * 1.7;
-    uint16_t lockValueA = (uint16_t)(constrain((int) lockValue + (int) cvA - 520, 0, 1023));
-    uint16_t lockValueB = (uint16_t)(constrain((int) lockValue + (int) cvB - 520, 0, 1023));
+    uint16_t lockValueA = (uint16_t)(constrain((int) lockValue + (int) cvA - 525, 0, 1023));
+    uint16_t lockValueB = (uint16_t)(constrain((int) lockValue + (int) cvB - 525, 0, 1023));
     uint8_t shiftRegisterLength = getShiftRegisterLength();
     
     // Detect rising edge
