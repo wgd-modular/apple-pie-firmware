@@ -14,7 +14,7 @@
 #define DAC_PIN 10
 
 //Debug via serial
-#define DEBUG true
+#define DEBUG false
 
 MCP4822 dac(DAC_PIN);
 
@@ -66,8 +66,14 @@ void doClockCycle(bool clockstate) {
   // Rising edge
   if (clockstate) {
     digitalWrite(GATE_OUT1, shiftRegister1 >= 0x8000);
+    #ifdef DEBUG
+    if (shiftRegister1 >= 0x8000) Serial.println("Sending Gate A");
+    #endif
     shiftRegister1 = clearNthLeftBit((shiftRegister1 << 1), shiftRegisterLength) | (lockValueA < random(0,2048) ? (shiftRegister1 >> (shiftRegisterLength - 1)) : (~shiftRegister1 >> (shiftRegisterLength - 1)));
     digitalWrite(GATE_OUT2, shiftRegister2 >= 0x8000);
+    #ifdef DEBUG
+    if (shiftRegister2 >= 0x8000) Serial.println("Sending Gate B");
+    #endif
     // Invert functionality of lockValue when switch is in reverse position
     if (readSwitchPosition()) {
       shiftRegister2 = clearNthLeftBit((shiftRegister2 << 1), shiftRegisterLength) | (lockValueB < random(0,2048) ? (shiftRegister2 >> (shiftRegisterLength - 1)) : (~shiftRegister2 >> (shiftRegisterLength - 1)));
@@ -81,7 +87,10 @@ void doClockCycle(bool clockstate) {
 }
 
 void setup() {
-  if (DEBUG) Serial.begin(115200);
+  #ifdef DEBUG
+  Serial.begin(115200);
+  Serial.println("Starting...");
+  #endif
 
   // Initialize Pin Modes
   pinMode(GATE_OUT1, OUTPUT);
@@ -98,13 +107,9 @@ void setup() {
   dac.setGainB(MCP4822::High);
 
   randomSeed(analogRead(XTAL));
-
-  if (DEBUG) Serial.println("Starting...");
 }
 
 void loop() {
-  // if (DEBUG) Serial.println("Checking pins");
-
   int lockValue = analogRead(LOCK_PIN);
   int cvA = analogRead(CV_1) * 1.7;
   int cvB = analogRead(CV_2) * 1.7;
@@ -117,38 +122,26 @@ void loop() {
   shiftRegisterLength = getShiftRegisterLength();
   switchPosition = readSwitchPosition();
 
-/**
-  if (DEBUG) {
-    Serial.print("Lock val: ");
-    Serial.print(lockValue);
-    Serial.print(" cvA: ");
-    Serial.print(cvA);
-    Serial.print(" cvB: ");
-    Serial.print(cvB);
-    Serial.println("...Done");
-  }
-**/
-
   //Send new CV if shiftRegisters are changed
   uint16_t new_cv_1 = shiftRegister1 >> 4;
   uint16_t new_cv_2 = shiftRegister2 >> 4;
+  
   if (last_cv_1 != new_cv_1) {
     dac.setVoltageA(new_cv_1);
     last_cv_1 = new_cv_1;
+    #ifdef DEBUG
+    Serial.print("New CV1: ");
+    Serial.println(new_cv_1);  
+    #endif
   }
   if (last_cv_2 != new_cv_2) {
     dac.setVoltageB(new_cv_2);
     last_cv_2 = new_cv_2;
+    #ifdef DEBUG
+    Serial.print("New CV2: ");
+    Serial.println(new_cv_2);  
+    #endif
   }
 
-/**
-  if (DEBUG) {
-    Serial.print("New CV1: ");
-    Serial.print(new_cv_1);
-    Serial.print(" new CV2: ");
-    Serial.print(new_cv_2);
-    Serial.println("...Done");
-  }
-**/
   dac.updateDAC();
 }
