@@ -14,19 +14,21 @@
 #define DAC_PIN 10
 
 //Debug via serial
-#define DEBUG false
+//#define DEBUG true
 
 MCP4822 dac(DAC_PIN);
 
 // Global Setting Values
-volatile uint16_t lockValueA = 0;
-volatile uint16_t lockValueB = 0;
-volatile uint8_t shiftRegisterLength = 16;
-volatile bool switchPosition = true;
+uint16_t lockValueA = 0;
+uint16_t lockValueB = 0;
+uint8_t shiftRegisterLength = 16;
+bool switchPosition = true;
+volatile bool clockLeading = false;
+volatile bool clockTrailing = false;
 
 // Shift Register Arrays
-volatile uint16_t shiftRegister1 = 0x0000;
-volatile uint16_t shiftRegister2 = 0x0000;
+uint16_t shiftRegister1 = 0x0000;
+uint16_t shiftRegister2 = 0x0000;
 uint16_t last_cv_1 = -1;
 uint16_t last_cv_2 = -1;
 
@@ -65,24 +67,11 @@ uint16_t clearNthLeftBit(uint16_t value, uint8_t n) {
 void doClockCycle(bool clockstate) {
   // Rising edge
   if (clockstate) {
-    digitalWrite(GATE_OUT1, shiftRegister1 >= 0x8000);
-    #ifdef DEBUG
-    if (shiftRegister1 >= 0x8000) Serial.println("Sending Gate A");
-    #endif
-    shiftRegister1 = clearNthLeftBit((shiftRegister1 << 1), shiftRegisterLength) | (lockValueA < random(0,2048) ? (shiftRegister1 >> (shiftRegisterLength - 1)) : (~shiftRegister1 >> (shiftRegisterLength - 1)));
-    digitalWrite(GATE_OUT2, shiftRegister2 >= 0x8000);
-    #ifdef DEBUG
-    if (shiftRegister2 >= 0x8000) Serial.println("Sending Gate B");
-    #endif
-    // Invert functionality of lockValue when switch is in reverse position
-    if (readSwitchPosition()) {
-      shiftRegister2 = clearNthLeftBit((shiftRegister2 << 1), shiftRegisterLength) | (lockValueB < random(0,2048) ? (shiftRegister2 >> (shiftRegisterLength - 1)) : (~shiftRegister2 >> (shiftRegisterLength - 1)));
-    } else {
-      shiftRegister2 = clearNthLeftBit((shiftRegister2 << 1), shiftRegisterLength) | ((1024 - lockValueB) < random(0,2048) ? (shiftRegister2 >> (shiftRegisterLength - 1)) : (~shiftRegister2 >> (shiftRegisterLength - 1)));
-    }
+    clockLeading = true;
+    clockTrailing = false;
   } else {
-    digitalWrite(GATE_OUT1, LOW);
-    digitalWrite(GATE_OUT2, LOW); 
+    clockTrailing = true;
+    clockLeading = false;
   }
 }
 
@@ -110,6 +99,7 @@ void setup() {
 }
 
 void loop() {
+
   int lockValue = analogRead(LOCK_PIN);
   int cvA = analogRead(CV_1) * 1.7;
   int cvB = analogRead(CV_2) * 1.7;
@@ -118,30 +108,54 @@ void loop() {
   lockValueA = (uint16_t)(constrain((int) lockValue + (int) cvA - 525, 0, 1023));
   lockValueB = (uint16_t)(constrain((int) lockValue + (int) cvB - 525, 0, 1023));
 
+  if (clockLeading)
+  {
+    #ifdef DEBUG
+    if (shiftRegister1 >= 0x8000) Serial.println("Sending Gate A");
+    #endif
+    shiftRegister1 = clearNthLeftBit((shiftRegister1 << 1), shiftRegisterLength) | (lockValueA < random(0,2048) ? (shiftRegister1 >> (shiftRegisterLength - 1)) : (~shiftRegister1 >> (shiftRegisterLength - 1)));
+    #ifdef DEBUG
+    if (shiftRegister2 >= 0x8000) Serial.println("Sending Gate B");
+    #endif
+    // Invert functionality of lockValue when switch is in reverse position
+    if (readSwitchPosition()) {
+      shiftRegister2 = clearNthLeftBit((shiftRegister2 << 1), shiftRegisterLength) | (lockValueB < random(0,2048) ? (shiftRegister2 >> (shiftRegisterLength - 1)) : (~shiftRegister2 >> (shiftRegisterLength - 1)));
+    } else {
+      shiftRegister2 = clearNthLeftBit((shiftRegister2 << 1), shiftRegisterLength) | ((1024 - lockValueB) < random(0,2048) ? (shiftRegister2 >> (shiftRegisterLength - 1)) : (~shiftRegister2 >> (shiftRegisterLength - 1)));
+    }
+    //Send new CV if shiftRegisters are changed
+    uint16_t new_cv_1 = shiftRegister1 >> 4;
+    uint16_t new_cv_2 = shiftRegister2 >> 4;
+    
+    if (last_cv_1 != new_cv_1) {
+      dac.setVoltageA(new_cv_1);
+      last_cv_1 = new_cv_1;
+      #ifdef DEBUG
+      Serial.print("New CV1: ");
+      Serial.println(new_cv_1);  
+      #endif
+    }
+    if (last_cv_2 != new_cv_2) {
+      dac.setVoltageB(new_cv_2);
+      last_cv_2 = new_cv_2;
+      #ifdef DEBUG
+      Serial.print("New CV2: ");
+      Serial.println(new_cv_2);  
+      #endif
+    }
+    dac.updateDAC();
+    digitalWrite(GATE_OUT1, shiftRegister1 >= 0x8000);
+    digitalWrite(GATE_OUT2, shiftRegister2 >= 0x8000);
+    clockLeading = false;
+  }
+  else if (clockTrailing)
+  {
+    digitalWrite(GATE_OUT1, LOW);
+    digitalWrite(GATE_OUT2, LOW);
+    clockTrailing = false;
+  }
+
   //Length of sequence (2,4,8,16) selected by STEPS_PIN
   shiftRegisterLength = getShiftRegisterLength();
   switchPosition = readSwitchPosition();
-
-  //Send new CV if shiftRegisters are changed
-  uint16_t new_cv_1 = shiftRegister1 >> 4;
-  uint16_t new_cv_2 = shiftRegister2 >> 4;
-  
-  if (last_cv_1 != new_cv_1) {
-    dac.setVoltageA(new_cv_1);
-    last_cv_1 = new_cv_1;
-    #ifdef DEBUG
-    Serial.print("New CV1: ");
-    Serial.println(new_cv_1);  
-    #endif
-  }
-  if (last_cv_2 != new_cv_2) {
-    dac.setVoltageB(new_cv_2);
-    last_cv_2 = new_cv_2;
-    #ifdef DEBUG
-    Serial.print("New CV2: ");
-    Serial.println(new_cv_2);  
-    #endif
-  }
-
-  dac.updateDAC();
 }
