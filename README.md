@@ -20,7 +20,7 @@ Navigate to the directory:
 cd apple-pie-firmware
 ```
 
-After opening the file with the Arduino IDE, connect your USBasp programmer to your computer and your module. Ensure that the ISP header is connected correctly.
+After opening the file with the Arduino IDE, connect your USBasp programmer to your computer and your module. Ensure that the ISP header is connected correctly so the GND marking on both the pcb and programmer line up.
 
 In the Arduino IDE, select Tools > Board > Arduino Nano and set Processor to ATmega328P. Then, set Port to the appropriate COM port (if applicable), and set Programmer to USBasp.
 
