@@ -22,7 +22,7 @@ Navigate to the directory:
 cd apple-pie-firmware
 ```
 
-Open the `.ino` file using your Arduino IDE. Also make sure you have the [DAC Library](https://reference.arduino.cc/reference/en/libraries/mcp48xx-dac-library/) installed.
+Open the `.ino` file using your Arduino IDE. Also make sure you have the [DAC Library](https://docs.arduino.cc/libraries/mcp48xx-dac-library/) installed.
 
 ### USBasp
 
