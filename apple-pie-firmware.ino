@@ -1,5 +1,4 @@
 #include <MCP48xx.h>
-#include <YetAnotherPcInt.h>
 
 // Pin Definitions
 #define GATE_OUT1 2
@@ -85,6 +84,10 @@ void doClockCycle(bool clockstate) {
   }
 }
 
+ISR(PCINT0_vect) {
+  doClockCycle(PINB & (1 << PB1));
+}
+
 // Initialises pins, DAC, clock interrupt, and random seed.
 void setup() {
   // Initialize Pin Modes
@@ -92,8 +95,9 @@ void setup() {
   pinMode(GATE_OUT2, OUTPUT);
   pinMode(CLOCK_PIN, INPUT_PULLUP);  // Pullup prevents spurious interrupts when no clock is patched in
 
-  // set up Clock interrupt
-  PcInt::attachInterrupt(CLOCK_PIN, doClockCycle, CHANGE);
+  // Enable pin-change interrupt on CLOCK_PIN (pin 9 = PB1 = PCINT1).
+  PCICR  |= (1 << PCIE0);   // enable PCINT[7:0] group (PORTB)
+  PCMSK0 |= (1 << PCINT1);  // unmask PCINT1 (pin 9) only
 
   dac.init();
   dac.turnOnChannelA();
