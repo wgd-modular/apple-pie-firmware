@@ -27,7 +27,7 @@ jobs:
         arduino-cli compile -e -b arduino:avr:uno apple-pie-firmware.ino
 
     - name: Upload compiled hex file as artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: apple-pie-firmware-hex
         path: build/arduino.avr.uno/apple-pie-firmware.ino.hex
