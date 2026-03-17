@@ -19,24 +19,34 @@ MCP4822 dac(DAC_PIN);
 #define EVT_LEADING  1
 
 // CV input scaling: gain expands 0-1023 ADC range; neutral offset is the
-// scaled CV value that produces zero effect on the lock (analogRead ~309, ~1.5V)
-const float CV_GAIN          = 1.7;
-const int   CV_NEUTRAL_POINT = 525;
+// scaled CV value that produces zero effect on the lock (analogRead ~309, ~1.5V).
+// Gain expressed as integer ratio (17/10 = 1.7) to avoid software float multiply on AVR.
+const int CV_GAIN_NUM    = 17;
+const int CV_GAIN_DEN    = 10;
+const int CV_NEUTRAL_POINT = 525;
+
+// Lock threshold range. Small lower bound ensures the
+// potentiometer can reliably achieve a fully-locked sequence at minimum position.
+const uint16_t LOCK_MIN = 6;
+const uint16_t LOCK_MAX = 1024;
 
 // Global State
 volatile uint8_t clockEvent = EVT_NONE;
-uint8_t shiftRegisterLength = 16;
+uint8_t  shiftRegisterLength = 16;
+uint16_t srMask = 0xFFFF;  // bitmask for active LFSR window; kept in sync with shiftRegisterLength
 bool switchPosition = true;
 
-// Shift Register Arrays
+// Shift Register Arrays — initialised to complementary patterns so both
+// channels start active and neither is stuck in an all-zero or all-one state.
 uint16_t shiftRegister1 = 0xAAAA;
 uint16_t shiftRegister2 = 0x5555;
 
-// Function to read switch position
+// Returns true if the mode switch is in the forward position.
 bool readSwitchPosition() {
   return analogRead(SWITCH_PIN) > 512;
 }
 
+// Returns the active LFSR length (2, 4, 8, or 16) debounced from the steps potentiometer.
 uint8_t getShiftRegisterLength() {
   static uint8_t confirmedLength = 16;
   static uint8_t candidateLength = 16;
@@ -62,17 +72,8 @@ uint8_t getShiftRegisterLength() {
   return confirmedLength;
 }
 
-uint16_t clearNthLeftBit(uint16_t value, uint8_t n) {
-  // Calculate the bit position from the left
-  uint8_t bitPosition = 16 - n;
 
-  // Create a mask with all bits set to 1 except the nth leftmost bit
-  uint16_t mask = ~(1 << bitPosition);
-
-  // Clear the nth leftmost bit by applying the mask
-  return value & mask;
-}
-
+// ISR: flags a leading-edge event on rising clock, drives gates low immediately on falling edge.
 void doClockCycle(bool clockstate) {
   if (clockstate) {
     clockEvent = EVT_LEADING;
@@ -84,6 +85,7 @@ void doClockCycle(bool clockstate) {
   }
 }
 
+// Initialises pins, DAC, clock interrupt, and random seed.
 void setup() {
   // Initialize Pin Modes
   pinMode(GATE_OUT1, OUTPUT);
@@ -102,6 +104,7 @@ void setup() {
   randomSeed(analogRead(ENTROPY_PIN));
 }
 
+// Main loop: advances LFSRs and updates gate/CV outputs on each clock edge.
 void loop() {
   cli();
   uint8_t evt = clockEvent;
@@ -109,16 +112,39 @@ void loop() {
   sei();
 
   if (evt == EVT_LEADING) {
-    // The active LFSR bits are 0..(shiftRegisterLength-1); the current output bit
-    // is the MSB of that window, i.e. bit (shiftRegisterLength-1).
+    // NOTE: window placement differs from the original reference sketch.
+    // Here the active LFSR bits occupy the BOTTOM of the 16-bit register:
+    // bits 0..(shiftRegisterLength-1), with the gate/output bit at position
+    // (shiftRegisterLength-1).  The reference places the window at the TOP
+    // (bits (16-n)..15, gate = bit 15), but its feedback path is also sourced
+    // from bit (n-1) and inserted at bit 0, so the new bit can never propagate
+    // into the top window for n < 16 — the sequence freezes after ~n clocks.
+    // The bottom-window approach used here is correct for all supported lengths
+    // (2, 4, 8, 16).
     bool gate1 = (shiftRegister1 >> (shiftRegisterLength - 1)) & 1;
     bool gate2 = (shiftRegister2 >> (shiftRegisterLength - 1)) & 1;
 
+    // Scale active LFSR window to 12-bit DAC range.
+    // Short sequences (n<=12) shift left to fill the range; n=16 shifts right.
+    uint16_t cv1 = (shiftRegisterLength <= 12)
+        ? ((shiftRegister1 & srMask) << (12 - shiftRegisterLength))
+        : ((shiftRegister1 & srMask) >> (shiftRegisterLength - 12));
+    uint16_t cv2 = (shiftRegisterLength <= 12)
+        ? ((shiftRegister2 & srMask) << (12 - shiftRegisterLength))
+        : ((shiftRegister2 & srMask) >> (shiftRegisterLength - 12));
+
     // Only update CV when the gate fires so CV holds its last value on silent steps,
     // preventing unwanted pitch/mod changes on downstream modules between gates.
-    if (gate1) dac.setVoltageA(shiftRegister1 >> 4);
-    if (gate2) dac.setVoltageB(shiftRegister2 >> 4);
-    if (gate1 || gate2) dac.updateDAC();
+    // Track last values so both channels can always be written before updateDAC,
+    // preventing uninitialised/stale state being latched on a single-channel fire.
+    static uint16_t lastCv1 = 0, lastCv2 = 0;
+    if (gate1 || gate2) {
+      if (gate1) lastCv1 = cv1;
+      if (gate2) lastCv2 = cv2;
+      dac.setVoltageA(lastCv1);
+      dac.setVoltageB(lastCv2);
+      dac.updateDAC();
+    }
 
     // Drive gates using direct port manipulation. GATE_OUT1=pin2=PD2, GATE_OUT2=pin3=PD3.
     if (gate1) PORTD |= (1 << PD2); else PORTD &= ~(1 << PD2);
@@ -126,22 +152,25 @@ void loop() {
 
     int lockValue = analogRead(LOCK_PIN);
 
-    // Compute next state
-    int cvA = analogRead(CV_1) * CV_GAIN;
-    int cvB = analogRead(CV_2) * CV_GAIN;
+    // Compute next state.
+    // Each LFSR shifts left within the active window (srMask), then feeds back
+    // its own output bit — either kept or inverted — based on lock probability.
+    int cvA = (analogRead(CV_1) * CV_GAIN_NUM) / CV_GAIN_DEN;
+    int cvB = (analogRead(CV_2) * CV_GAIN_NUM) / CV_GAIN_DEN;
     uint16_t lockValueA = (uint16_t)(constrain((int)lockValue + cvA - CV_NEUTRAL_POINT, 0, 1023));
     uint16_t lockValueB = (uint16_t)(constrain((int)lockValue + cvB - CV_NEUTRAL_POINT, 0, 1023));
-    shiftRegister1 = clearNthLeftBit(shiftRegister1 << 1, shiftRegisterLength) | (((lockValueA < random(6, 1024)) ? (shiftRegister1 >> (shiftRegisterLength - 1)) : (~shiftRegister1 >> (shiftRegisterLength - 1))) & 1);
 
-    // Invert functionality of lockValue when switch is in reverse position
-    if (switchPosition) {
-      shiftRegister2 = clearNthLeftBit(shiftRegister2 << 1, shiftRegisterLength) | (((lockValueB < random(6, 1024)) ? (shiftRegister2 >> (shiftRegisterLength - 1)) : (~shiftRegister2 >> (shiftRegisterLength - 1))) & 1);
-    } else {
-      shiftRegister2 = clearNthLeftBit(shiftRegister2 << 1, shiftRegisterLength) | ((((1024 - lockValueB) < random(6, 1024)) ? (shiftRegister2 >> (shiftRegisterLength - 1)) : (~shiftRegister2 >> (shiftRegisterLength - 1))) & 1);
-    }
+    uint16_t newBit1 = (lockValueA < random(LOCK_MIN, LOCK_MAX)) ? gate1 : !gate1;
+    shiftRegister1 = ((shiftRegister1 << 1) & srMask) | newBit1;
+
+    // Switch inverts the lock probability for channel 2.
+    uint16_t threshold2 = switchPosition ? lockValueB : (1024 - lockValueB);
+    uint16_t newBit2 = (threshold2 < random(LOCK_MIN, LOCK_MAX)) ? gate2 : !gate2;
+    shiftRegister2 = ((shiftRegister2 << 1) & srMask) | newBit2;
   } else {
     //Length of sequence (2,4,8,16) selected by STEPS_PIN
     shiftRegisterLength = getShiftRegisterLength();
+    srMask = (shiftRegisterLength < 16) ? (uint16_t)((1U << shiftRegisterLength) - 1) : 0xFFFF;
     switchPosition = readSwitchPosition();
   }
 }
